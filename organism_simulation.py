@@ -262,7 +262,7 @@ def main():
         if label == "Dead":
             count = sum(1 for org in sim.organisms if org.strength == 0)
         else:
-            count = len(sim.filter_by_strength(min_str, max_str))
+            count = sum(1 for org in sim.filter_by_strength(min_str, max_str) if org.strength > 0)
         percentage = (count / n) * 100
         print(f"  {label}: {count} organisms ({percentage:.1f}%)")
 
