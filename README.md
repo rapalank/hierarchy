@@ -58,12 +58,23 @@ The simulation provides comprehensive analysis including:
 - Survival and dominance metrics
 - Strength distribution analysis
 
+### Visualization
+
+`organism_arena.html` is an interactive, browser-based replay of the same battle rules. Open it directly in a browser (no build step or server needed):
+
+```bash
+open organism_arena.html
+```
+
+It shows organisms in a petri dish sized by strength, a leaderboard, a battle log, and a chart of how many organisms are alive versus how much of the total strength the strongest one holds. You can set the number of organisms, battles, seed, and playback speed. It uses its own seeded random generator, so a seed gives different draws than the same seed in the Python script.
+
 ## Project Structure
 
 ```
 hierarchy/
 ├── README.md
 ├── organism_simulation.py    # Main simulation script
+├── organism_arena.html       # Interactive battle visualization
 ├── .git/                     # Git repository
 └── .idea/                    # IDE configuration
 ```
