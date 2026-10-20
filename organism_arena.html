@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Organism Battle Arena</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: lab bench. Petri-dish arena on the left, readouts on the right, time series and battle log below. */
+:root {
+  --bg: #f3f6f6;
+  --surface: #fcfdfd;
+  --dish: #e9efef;
+  --fg: #10191b;
+  --fg2: #4a5759;
+  --muted: #7f8c8e;
+  --line: #d9e1e2;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --font-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1315; --surface: #151b1d; --dish: #11181a; --fg: #edf2f2; --fg2: #b6c1c2;
+    --muted: #7c888a; --line: #273133; --series-1: #3987e5; --series-2: #d95926; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1315; --surface: #151b1d; --dish: #11181a; --fg: #edf2f2; --fg2: #b6c1c2;
+  --muted: #7c888a; --line: #273133; --series-1: #3987e5; --series-2: #d95926; color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
+.wrap {
+  max-width: 1180px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+  display: grid; gap: 20px;
+}
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(28px, 4vw, 40px); line-height: 1.05; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+.lede { margin: 6px 0 0; color: var(--fg2); max-width: 62ch; }
+.model { font-family: var(--font-mono); font-size: 13px; color: var(--fg2); border: 1px solid var(--line); background: var(--surface); padding: 8px 12px; border-radius: 6px; display: grid; gap: 2px; }
+.model b { color: var(--fg); font-weight: 500; }
+
+.controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px 16px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.field { display: grid; gap: 4px; }
+.field label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+.field input[type=number] { width: 88px; font: 500 14px var(--font-mono); padding: 6px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); color: var(--fg); }
+.field input[type=range] { width: 140px; accent-color: var(--series-1); }
+.speedval { font: 12px var(--font-mono); color: var(--fg2); }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+button { font: 600 14px var(--font-body); padding: 7px 14px; border-radius: 5px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
+button:hover { border-color: var(--fg2); }
+button.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); min-width: 84px; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; }
+button:disabled { opacity: 0.45; cursor: default; }
+
+.main { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; }
+@media (max-width: 820px) { .main { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; min-width: 0; display: grid; gap: 12px; align-content: start; }
+.panel h2 { font-family: var(--font-display); font-weight: 500; font-size: 18px; margin: 0; }
+.panel .sub { font-size: 13px; color: var(--muted); margin: -8px 0 0; }
+
+.dish-wrap { position: relative; }
+#dish { width: 100%; height: auto; display: block; max-width: 100%; aspect-ratio: 1; }
+.dish-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--fg2); }
+.dish-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.tile { background: var(--surface); padding: 10px 12px; display: grid; gap: 2px; }
+.tile .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+.tile .v { font: 500 22px var(--font-mono); font-variant-numeric: tabular-nums; }
+.tile .n { font-size: 12px; color: var(--fg2); }
+
+.board { display: grid; gap: 6px; }
+.row { display: grid; grid-template-columns: 22px 46px minmax(0, 1fr) 52px 44px; align-items: center; gap: 8px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.row .rk { color: var(--muted); font-family: var(--font-mono); font-size: 12px; }
+.row .id { font-family: var(--font-mono); font-weight: 500; }
+.row .bar { height: 10px; background: var(--dish); border-radius: 0 4px 4px 0; overflow: hidden; }
+.row .bar i { display: block; height: 100%; background: var(--series-1); border-radius: 0 4px 4px 0; min-width: 2px; }
+.row .val, .row .w { font-family: var(--font-mono); text-align: right; }
+.row .w { color: var(--fg2); }
+.row.head { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+.row.head .val, .row.head .w { font-family: var(--font-body); }
+
+.chart-wrap { position: relative; }
+#chart { width: 100%; display: block; overflow: visible; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--fg2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend .ln { width: 16px; height: 2px; display: inline-block; border-radius: 1px; }
+.tip { position: absolute; pointer-events: none; background: var(--fg); color: var(--bg); font-size: 12px; padding: 6px 9px; border-radius: 5px; white-space: nowrap; transform: translate(-50%, calc(-100% - 10px)); font-variant-numeric: tabular-nums; z-index: 2; }
+.tip b { font-weight: 600; }
+
+.log { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; max-height: 300px; overflow-y: auto; }
+.log li { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13px; align-items: baseline; font-variant-numeric: tabular-nums; }
+.log li:last-child { border-bottom: 0; }
+.log .t { font-family: var(--font-mono); color: var(--muted); font-size: 12px; }
+.log .m { font-family: var(--font-mono); font-size: 12px; color: var(--fg2); }
+.chip { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; border: 1px solid var(--fg2); color: var(--fg); border-radius: 999px; padding: 0 7px; }
+.empty { color: var(--muted); font-size: 13px; }
+.status { font-size: 13px; color: var(--fg2); }
+.below { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 20px; }
+@media (max-width: 820px) { .below { grid-template-columns: minmax(0, 1fr); } }
+footer { font-size: 12px; color: var(--muted); }
+footer code { font-family: var(--font-mono); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Organism Battle Arena</h1>
+      <p class="lede">Each battle pairs two living organisms at random. The stronger one is more likely to win, and the winner absorbs all of the loser's strength. Watch a hierarchy form as strength piles up in a few survivors.</p>
+    </div>
+    <div class="model" aria-label="Battle model">
+      <span><b>P(i wins)</b> = s<sub>i</sub> / (s<sub>i</sub> + s<sub>j</sub>)</span>
+      <span><b>winner</b> ← s<sub>i</sub> + s<sub>j</sub> &nbsp; <b>loser</b> ← 0</span>
+    </div>
+  </header>
+
+  <form class="controls" id="controls">
+    <div class="field"><label for="n">Organisms</label><input id="n" type="number" min="2" max="1000" value="100"></div>
+    <div class="field"><label for="m">Battles</label><input id="m" type="number" min="1" max="5000" value="80"></div>
+    <div class="field"><label for="seed">Seed</label><input id="seed" type="number" min="0" max="999999" value="42"></div>
+    <div class="field"><label for="speed">Speed</label><input id="speed" type="range" min="1" max="60" value="8"><span class="speedval" id="speedval">8 battles/s</span></div>
+    <div class="btns">
+      <button type="button" class="primary" id="play">Play</button>
+      <button type="button" id="step">Step</button>
+      <button type="button" id="finish">Finish</button>
+      <button type="submit" id="reset">Reset</button>
+    </div>
+  </form>
+
+  <div class="main">
+    <section class="panel">
+      <h2>Petri dish</h2>
+      <p class="sub">Each circle is one organism. Area is proportional to strength.</p>
+      <div class="dish-wrap">
+        <svg id="dish" viewBox="-145 -145 290 290" role="img" aria-label="Organisms arranged in a dish, sized by strength"></svg>
+        <div class="tip" id="dishtip" hidden></div>
+      </div>
+      <div class="dish-legend">
+        <span><i class="sw" style="background: var(--series-1)"></i>Alive</span>
+        <span><i class="sw" style="border: 1.5px solid var(--muted)"></i>Dead (strength 0)</span>
+        <span><i class="sw" style="border: 2px solid var(--fg)"></i>Last battle's winner</span>
+        <span><i class="sw" style="border: 1.5px dashed var(--fg)"></i>Last battle's loser</span>
+      </div>
+      <div class="status" id="status"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Readout</h2>
+      <div class="tiles">
+        <div class="tile"><span class="k">Battles fought</span><span class="v" id="t-battles">0</span><span class="n" id="t-battles-n"></span></div>
+        <div class="tile"><span class="k">Alive</span><span class="v" id="t-alive">0</span><span class="n" id="t-alive-n"></span></div>
+        <div class="tile"><span class="k">Strongest</span><span class="v" id="t-top">0</span><span class="n" id="t-top-n"></span></div>
+        <div class="tile"><span class="k">Total strength</span><span class="v" id="t-total">0</span><span class="n">Conserved: every battle moves strength, none is lost</span></div>
+      </div>
+      <h2>Top 8 by strength</h2>
+      <div class="board" id="board"></div>
+    </section>
+  </div>
+
+  <div class="below">
+    <section class="panel">
+      <h2>Concentration over time</h2>
+      <div class="legend">
+        <span><i class="ln" style="background: var(--series-1)"></i>Organisms alive, % of population</span>
+        <span><i class="ln" style="background: var(--series-2)"></i>Strongest organism's share of total strength</span>
+      </div>
+      <div class="chart-wrap" id="chartwrap">
+        <svg id="chart" role="img" aria-label="Line chart of alive share and top share by battle"></svg>
+        <div class="tip" id="charttip" hidden></div>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>Battle log</h2>
+      <p class="sub">Newest first. An upset is a win by the weaker organism.</p>
+      <ul class="log" id="log"></ul>
+    </section>
+  </div>
+
+  <footer>Same rules as <code>organism_simulation.py</code>: strengths start uniform in [0, 1) and each battle pairs two living organisms. The page uses its own seeded random generator, so a seed here gives different draws than the same seed in Python.</footer>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const NS = "http://www.w3.org/2000/svg";
+  const el = (tag, attrs = {}) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+  const fmt = (x) => x.toFixed(3);
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  let sim, rng, playing = false, acc = 0, lastTs = 0;
+
+  function newSim(n, m, seed) {
+    rng = mulberry32(seed);
+    const orgs = [];
+    for (let i = 0; i < n; i++) { const s = rng(); orgs.push({ id: i + 1, s, s0: s, wins: 0 }); }
+    const total = orgs.reduce((a, o) => a + o.s, 0);
+    const maxS = Math.max(...orgs.map((o) => o.s));
+    return { n, m, orgs, total, history: [], series: [{ t: 0, alive: 100, top: (maxS / total) * 100 }], done: false, last: null };
+  }
+
+  function step() {
+    if (sim.done) return false;
+    const alive = sim.orgs.filter((o) => o.s > 0);
+    if (alive.length < 2 || sim.history.length >= sim.m) { sim.done = true; return false; }
+    const i = Math.floor(rng() * alive.length);
+    let j = Math.floor(rng() * (alive.length - 1)); if (j >= i) j++;
+    const a = alive[i], b = alive[j];
+    const tot = a.s + b.s;
+    const pA = tot > 0 ? a.s / tot : 0.5;
+    const [w, l] = rng() < pA ? [a, b] : [b, a];
+    const rec = { t: sim.history.length + 1, w: w.id, l: l.id, ws: w.s, ls: l.s, upset: w.s < l.s };
+    w.s = tot; l.s = 0; w.wins++;
+    sim.history.push(rec);
+    sim.last = rec;
+    const aliveN = alive.length - 1;
+    const maxS = Math.max(...sim.orgs.map((o) => o.s));
+    sim.series.push({ t: rec.t, alive: (aliveN / sim.n) * 100, top: (maxS / sim.total) * 100 });
+    if (aliveN < 2 || sim.history.length >= sim.m) sim.done = true;
+    return true;
+  }
+
+  /* ---------- Dish ---------- */
+  const dish = $("dish");
+  let dots = [], positions = [], unit = 1;
+  const R = 100;
+
+  function buildDish() {
+    dish.textContent = "";
+    dish.appendChild(el("circle", { cx: 0, cy: 0, r: R + 8, fill: "var(--dish)", stroke: "var(--line)", "stroke-width": 1.5 }));
+    dish.appendChild(el("circle", { cx: 0, cy: 0, r: R + 3, fill: "none", stroke: "var(--line)", "stroke-width": 0.75 }));
+    const n = sim.n;
+    unit = R / Math.sqrt(n) * 0.97;
+    positions = [];
+    for (let i = 0; i < n; i++) {
+      const r = unit * Math.sqrt(i + 0.5), th = i * 2.399963;
+      positions.push([r * Math.cos(th), r * Math.sin(th)]);
+    }
+    dish.appendChild(el("line", { id: "link", stroke: "var(--muted)", "stroke-width": 1, "stroke-dasharray": "2 3", opacity: 0 }));
+    const g = el("g", { id: "dots" });
+    dish.appendChild(g);
+    dots = sim.orgs.map((o, i) => {
+      const c = el("circle", { cx: positions[i][0].toFixed(2), cy: positions[i][1].toFixed(2), "data-i": i });
+      g.appendChild(c);
+      return c;
+    });
+  }
+
+  function renderDish() {
+    const k = unit * 0.55;
+    const deadR = Math.max(0.6, unit * 0.16);
+    const g = $("dots");
+    const order = sim.orgs.map((o, i) => i).sort((a, b) => sim.orgs[b].s - sim.orgs[a].s);
+    order.forEach((i) => {
+      const o = sim.orgs[i], c = dots[i];
+      if (o.s > 0) {
+        c.setAttribute("r", (k * Math.sqrt(o.s)).toFixed(2));
+        c.setAttribute("fill", "var(--series-1)");
+        c.setAttribute("fill-opacity", "0.82");
+        c.setAttribute("stroke", "var(--surface)");
+        c.setAttribute("stroke-width", Math.max(0.4, unit * 0.06).toFixed(2));
+        c.removeAttribute("stroke-dasharray");
+      } else {
+        c.setAttribute("r", deadR.toFixed(2));
+        c.setAttribute("fill", "var(--dish)");
+        c.setAttribute("fill-opacity", "1");
+        c.setAttribute("stroke", "var(--muted)");
+        c.setAttribute("stroke-width", Math.max(0.3, unit * 0.05).toFixed(2));
+        c.removeAttribute("stroke-dasharray");
+      }
+      g.appendChild(c);
+    });
+    const link = $("link");
+    if (sim.last) {
+      const wi = sim.last.w - 1, li = sim.last.l - 1;
+      const wc = dots[wi], lc = dots[li];
+      wc.setAttribute("stroke", "var(--fg)");
+      wc.setAttribute("stroke-width", Math.max(0.8, unit * 0.12).toFixed(2));
+      lc.setAttribute("r", Math.max(deadR, k * Math.sqrt(sim.last.ls)).toFixed(2));
+      lc.setAttribute("fill", "none");
+      lc.setAttribute("stroke", "var(--fg)");
+      lc.setAttribute("stroke-width", Math.max(0.6, unit * 0.08).toFixed(2));
+      lc.setAttribute("stroke-dasharray", `${(unit * 0.2).toFixed(2)} ${(unit * 0.15).toFixed(2)}`);
+      g.appendChild(lc); g.appendChild(wc);
+      link.setAttribute("x1", positions[li][0]); link.setAttribute("y1", positions[li][1]);
+      link.setAttribute("x2", positions[wi][0]); link.setAttribute("y2", positions[wi][1]);
+      link.setAttribute("opacity", 1);
+    } else link.setAttribute("opacity", 0);
+  }
+
+  const dishtip = $("dishtip");
+  dish.addEventListener("pointermove", (e) => {
+    const pt = dish.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+    const p = pt.matrixTransform(dish.getScreenCTM().inverse());
+    let best = -1, bestD = Infinity;
+    const k = unit * 0.55;
+    sim.orgs.forEach((o, i) => {
+      const dx = positions[i][0] - p.x, dy = positions[i][1] - p.y;
+      const d = Math.hypot(dx, dy) - (o.s > 0 ? k * Math.sqrt(o.s) : 0);
+      if (d < bestD) { bestD = d; best = i; }
+    });
+    if (best < 0 || bestD > unit * 0.9) { dishtip.hidden = true; return; }
+    const o = sim.orgs[best];
+    const box = dish.getBoundingClientRect(), wrap = dish.parentElement.getBoundingClientRect();
+    dishtip.innerHTML = `<b>Organism #${o.id}</b> · ${o.s > 0 ? "alive" : "dead"}<br>Strength ${fmt(o.s)} (started ${fmt(o.s0)})<br>${o.wins} win${o.wins === 1 ? "" : "s"}`;
+    dishtip.style.left = (e.clientX - wrap.left) + "px";
+    dishtip.style.top = (e.clientY - wrap.top) + "px";
+    dishtip.hidden = false;
+  });
+  dish.addEventListener("pointerleave", () => { dishtip.hidden = true; });
+
+  /* ---------- Chart ---------- */
+  const chart = $("chart"), charttip = $("charttip"), chartwrap = $("chartwrap");
+  let hoverT = null;
+
+  function renderChart() {
+    const W = Math.max(280, chartwrap.clientWidth);
+    const H = Math.round(Math.min(300, Math.max(200, W * 0.42)));
+    const m = { l: 40, r: 16, t: 12, b: 28 };
+    chart.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    chart.setAttribute("width", W); chart.setAttribute("height", H);
+    chart.textContent = "";
+    const iw = W - m.l - m.r, ih = H - m.t - m.b;
+    const maxT = Math.max(1, sim.m);
+    const x = (t) => m.l + (t / maxT) * iw;
+    const y = (v) => m.t + ih - (v / 100) * ih;
+
+    [0, 25, 50, 75, 100].forEach((v) => {
+      chart.appendChild(el("line", { x1: m.l, x2: m.l + iw, y1: y(v), y2: y(v), stroke: "var(--line)", "stroke-width": 1 }));
+      const tx = el("text", { x: m.l - 8, y: y(v) + 4, "text-anchor": "end", fill: "var(--muted)", "font-size": 11, "font-family": "var(--font-mono)" });
+      tx.textContent = v + "%"; chart.appendChild(tx);
+    });
+    const ticks = niceTicks(maxT, Math.max(3, Math.floor(iw / 80)));
+    ticks.forEach((t) => {
+      const tx = el("text", { x: x(t), y: m.t + ih + 18, "text-anchor": "middle", fill: "var(--muted)", "font-size": 11, "font-family": "var(--font-mono)" });
+      tx.textContent = t; chart.appendChild(tx);
+    });
+    const xl = el("text", { x: m.l + iw, y: H - 2, "text-anchor": "end", fill: "var(--muted)", "font-size": 11 });
+    xl.textContent = "battle"; chart.appendChild(xl);
+
+    const s = sim.series;
+    const path = (key) => s.map((d, i) => `${i ? "L" : "M"}${x(d.t).toFixed(1)},${y(d[key]).toFixed(1)}`).join("");
+    [["alive", "var(--series-1)"], ["top", "var(--series-2)"]].forEach(([key, col]) => {
+      chart.appendChild(el("path", { d: path(key), fill: "none", stroke: col, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+      const e = s[s.length - 1];
+      chart.appendChild(el("circle", { cx: x(e.t), cy: y(e[key]), r: 4, fill: col, stroke: "var(--surface)", "stroke-width": 2 }));
+    });
+
+    if (hoverT !== null && hoverT <= s[s.length - 1].t) {
+      const d = s[hoverT];
+      chart.appendChild(el("line", { x1: x(d.t), x2: x(d.t), y1: m.t, y2: m.t + ih, stroke: "var(--fg2)", "stroke-width": 1 }));
+      [["alive", "var(--series-1)"], ["top", "var(--series-2)"]].forEach(([key, col]) => {
+        chart.appendChild(el("circle", { cx: x(d.t), cy: y(d[key]), r: 4.5, fill: col, stroke: "var(--surface)", "stroke-width": 2 }));
+      });
+      const b = sim.history[d.t - 1];
+      charttip.innerHTML = `<b>Battle ${d.t}</b><br>Alive ${d.alive.toFixed(1)}% · Top share ${d.top.toFixed(1)}%` + (b ? `<br>#${b.w} beat #${b.l}${b.upset ? " (upset)" : ""}` : "<br>Starting population");
+      charttip.style.left = Math.min(Math.max(x(d.t), 90), W - 90) + "px";
+      charttip.style.top = Math.min(y(d.alive), y(d.top)) + "px";
+      charttip.hidden = false;
+    } else charttip.hidden = true;
+
+    chartGeom = { W, l: m.l, iw, maxT };
+  }
+
+  let chartGeom = null;
+  chart.addEventListener("pointermove", (e) => {
+    if (!chartGeom) return;
+    const g = chartGeom, r = chart.getBoundingClientRect();
+    const px = (e.clientX - r.left) * (g.W / r.width);
+    if (px < g.l - 8 || px > g.l + g.iw + 8) { if (hoverT !== null) { hoverT = null; renderChart(); } return; }
+    const t = Math.round(((px - g.l) / g.iw) * g.maxT);
+    const nt = Math.max(0, Math.min(sim.series.length - 1, t));
+    if (nt !== hoverT) { hoverT = nt; renderChart(); }
+  });
+  chart.addEventListener("pointerleave", () => { hoverT = null; renderChart(); });
+
+  function niceTicks(max, count) {
+    const raw = max / count, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const stepv = [1, 2, 5, 10].map((f) => f * mag).find((v) => v >= raw) || 10 * mag;
+    const out = [];
+    for (let v = 0; v <= max + 1e-9; v += stepv) out.push(Math.round(v));
+    return out;
+  }
+
+  /* ---------- Readouts ---------- */
+  function renderReadout() {
+    const alive = sim.orgs.filter((o) => o.s > 0);
+    const top = sim.orgs.reduce((a, o) => (o.s > a.s ? o : a), sim.orgs[0]);
+    const upsets = sim.history.filter((h) => h.upset).length;
+    $("t-battles").textContent = sim.history.length;
+    $("t-battles-n").textContent = `of ${sim.m} planned · ${upsets} upset${upsets === 1 ? "" : "s"}`;
+    $("t-alive").textContent = alive.length;
+    $("t-alive-n").textContent = `of ${sim.n} · ${(alive.length / sim.n * 100).toFixed(1)}%`;
+    $("t-top").textContent = fmt(top.s);
+    $("t-top-n").textContent = `Organism #${top.id} · ${(top.s / sim.total * 100).toFixed(1)}% of total`;
+    $("t-total").textContent = fmt(sim.orgs.reduce((a, o) => a + o.s, 0));
+
+    const ranked = [...sim.orgs].sort((a, b) => b.s - a.s || a.id - b.id).slice(0, 8);
+    const scale = ranked[0].s || 1;
+    $("board").innerHTML = `<div class="row head"><span>#</span><span>ID</span><span>Strength</span><span class="val">Value</span><span class="w">Wins</span></div>` +
+      ranked.map((o, i) => `<div class="row" title="Organism #${o.id}: strength ${fmt(o.s)}, started at ${fmt(o.s0)}, ${o.wins} wins">
+        <span class="rk">${i + 1}</span><span class="id">#${o.id}</span>
+        <span class="bar"><i style="width:${(o.s / scale * 100).toFixed(1)}%"></i></span>
+        <span class="val">${fmt(o.s)}</span><span class="w">${o.wins}</span></div>`).join("");
+
+    const recent = sim.history.slice(-40).reverse();
+    $("log").innerHTML = recent.length ? recent.map((h) => `<li>
+        <span class="t">#${h.t}</span>
+        <span>Organism <b>#${h.w}</b> <span class="m">(${fmt(h.ws)})</span> beat <b>#${h.l}</b> <span class="m">(${fmt(h.ls)})</span></span>
+        <span>${h.upset ? '<span class="chip">Upset</span>' : ""}</span></li>`).join("")
+      : `<li class="empty">No battles yet. Press Play or Step.</li>`;
+
+    let msg;
+    if (sim.done) {
+      msg = alive.length < 2 ? `Finished: one survivor, organism #${top.id}, holds all ${fmt(sim.total)} strength.`
+        : `Finished all ${sim.m} battles. ${alive.length} organisms survive.`;
+    } else msg = playing ? "Running…" : "Paused.";
+    $("status").textContent = msg;
+    $("play").textContent = playing ? "Pause" : "Play";
+    $("play").disabled = $("step").disabled = $("finish").disabled = sim.done;
+  }
+
+  function render() { renderDish(); renderChart(); renderReadout(); }
+
+  /* ---------- Loop & controls ---------- */
+  function speed() { return +$("speed").value; }
+  function frame(ts) {
+    if (!playing) return;
+    const dt = lastTs ? (ts - lastTs) / 1000 : 0; lastTs = ts;
+    acc += dt * speed();
+    let changed = false;
+    while (acc >= 1) { acc -= 1; if (step()) changed = true; else break; }
+    if (sim.done) playing = false;
+    if (changed || !playing) render();
+    if (playing) requestAnimationFrame(frame);
+  }
+  function play() { if (sim.done) return; playing = true; lastTs = 0; acc = 1; requestAnimationFrame(frame); renderReadout(); }
+  function pause() { playing = false; renderReadout(); }
+
+  function clampInt(v, lo, hi, d) { v = parseInt(v, 10); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; }
+  function reset(prerun) {
+    playing = false;
+    const n = clampInt($("n").value, 2, 1000, 100), m = clampInt($("m").value, 1, 5000, 80), seed = clampInt($("seed").value, 0, 999999, 42);
+    $("n").value = n; $("m").value = m; $("seed").value = seed;
+    sim = newSim(n, m, seed);
+    hoverT = null;
+    buildDish();
+    for (let i = 0; i < prerun; i++) step();
+    render();
+  }
+
+  $("play").addEventListener("click", () => (playing ? pause() : play()));
+  $("step").addEventListener("click", () => { pause(); step(); render(); });
+  $("finish").addEventListener("click", () => { pause(); while (step()); render(); });
+  $("controls").addEventListener("submit", (e) => { e.preventDefault(); reset(0); });
+  $("speed").addEventListener("input", () => { $("speedval").textContent = `${speed()} battles/s`; });
+  let rz; window.addEventListener("resize", () => { cancelAnimationFrame(rz); rz = requestAnimationFrame(renderChart); });
+
+  reset(reduced ? 80 : 25);
+  if (!reduced) play();
+})();
+</script>
+</body>
+</html>
