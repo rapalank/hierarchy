@@ -2,43 +2,17 @@
 
 Next steps for the hierarchy simulation, ordered by priority.
 
-## Current state
+## Done
 
-- `organism_simulation.py` runs an interactive simulation: N organisms with uniform random strength in [0, 1), M random battles, and the winner absorbs the loser's strength.
-- `organism_arena.html` replays the same rules in the browser, but it uses its own random generator, so it can't reproduce a Python run.
-- There are no tests, no dependency file and no command-line options. The seed is hardcoded to 42 in `main()`.
+Steps 1–5 of the original plan are complete.
 
-## 1. Make the simulation scriptable
-
-- Add `argparse` options for `--organisms`, `--battles` and `--seed`, and keep the interactive prompts as the fallback when no options are given.
-- Stop hardcoding `seed=42`. Default to a random seed and print it so a run can be reproduced.
-- Add a `requirements.txt` with `numpy`.
-
-## 2. Add tests
-
-Use `pytest`, with fixed seeds so the results are deterministic.
-
-- Total strength is the same before and after any number of battles.
-- After a battle, the loser has strength 0 and the winner has the combined strength.
-- Battles only pair living organisms, and the run stops when fewer than two are alive.
-- Over many trials, an organism's win rate approaches `s1 / (s1 + s2)`.
-- The final-analysis buckets add up to N. This guards the "Very Weak" double-count fixed in PR #1.
-
-## 3. Fix the strength bucket boundaries
-
-`filter_by_strength` includes both ends of each range, so a strength exactly at 0.2, 0.4, 0.6 or 0.8 is counted in two buckets. Change the ranges so each one includes its upper bound and excludes its lower bound, then drop the special case for dead organisms. This is unlikely to happen with random floats, but it's a one-line fix once the tests from step 2 exist.
-
-## 4. Export runs and replay them in the visualization
-
-- Add a `--export run.json` option that writes the starting strengths and `battle_history`.
-- Let `organism_arena.html` load that file, through a file picker or drag-and-drop, and replay the exact Python run. This removes the gap where a seed gives different draws in Python and in the browser.
-
-## 5. Tidy up the README
-
-- The "Example Results" section shows a final mean strength of 0.424. The mean never changes during a run because total strength is conserved, so say that this is also the starting mean.
-- Document the new command-line options and the export and replay workflow once they exist.
+1. **The simulation is scriptable.** `organism_simulation.py` takes `--organisms`, `--battles`, `--seed` and `--export`, and prompts only for counts that are left out. With no `--seed`, it picks one at random and prints it. `requirements.txt` and `requirements-dev.txt` list the dependencies.
+2. **There are tests.** `tests/test_organism_simulation.py` covers strength conservation, battle outcomes, pairing only living organisms, stopping at one survivor, win rates, same-seed reproducibility, bucket totals, export and the command-line options. Writing the reproducibility test showed that every simulation shared Python's global random generator, so creating a second one changed the first one's run. Each simulation now has its own generator, which still gives the same results as before for a given seed.
+3. **Strength buckets count each organism once.** Each bucket in `STRENGTH_BUCKETS` excludes its lower bound and includes its upper bound, and "Dead" is no longer a special case.
+4. **Python runs can be replayed in the browser.** `--export run.json` writes the seed, starting strengths and battle history. `organism_arena.html` loads the file from a file picker or by drag-and-drop, checks it, and replays every battle in order.
+5. **The README is up to date.** It documents the options, tests and replay workflow, and explains that the mean strength never changes.
 
 ## Open questions
 
-- Should the simulation support other battle rules, such as a partial strength transfer or a cost for fighting? If so, the battle rule should become a pluggable function before steps 2 and 4 are built on it.
+- Should the simulation support other battle rules, such as a partial strength transfer or a cost for fighting? If so, make the battle rule a pluggable function, and have the export record which rule was used so the visualization can replay it.
 - Is IntelliJ the only editor in use? If so, keeping `.idea/` in the repo is fine. If not, consider ignoring the machine-specific files (`misc.xml`, `hierarchy.iml`).

@@ -1,6 +1,19 @@
+import argparse
+import json
 import random
 import numpy as np
-from typing import List, Tuple
+from typing import List, Optional, Tuple
+
+# Strength buckets for the final analysis. Each bucket excludes its lower bound
+# and includes its upper bound, so every organism lands in exactly one bucket.
+STRENGTH_BUCKETS = [
+    (float('-inf'), 0.0, "Dead"),
+    (0.0, 0.2, "Very Weak"),
+    (0.2, 0.4, "Weak"),
+    (0.4, 0.6, "Average"),
+    (0.6, 0.8, "Strong"),
+    (0.8, float('inf'), "Very Strong")
+]
 
 class Organism:
     """Represents an organism with a strength attribute."""
@@ -18,7 +31,7 @@ class Organism:
 class OrganismSimulation:
     """Simulates a population of organisms with random strengths."""
     
-    def __init__(self, num_organisms: int, time_iterations: int = 0, seed: int = None):
+    def __init__(self, num_organisms: int, time_iterations: int = 0, seed: Optional[int] = None):
         """
         Initialize the simulation with N organisms.
         
@@ -27,20 +40,22 @@ class OrganismSimulation:
             time_iterations: Number of time iterations to run battles
             seed: Random seed for reproducibility
         """
-        if seed is not None:
-            random.seed(seed)
-            np.random.seed(seed)
-        
+        # Each simulation owns its generator, so creating another simulation
+        # can't disturb this one's sequence
+        self.rng = random.Random(seed)
+
         self.num_organisms = num_organisms
         self.time_iterations = time_iterations
+        self.seed = seed
         self.organisms = self._create_organisms()
+        self.initial_strengths = [org.strength for org in self.organisms]
         self.battle_history = []
     
     def _create_organisms(self) -> List[Organism]:
         """Create N organisms with random strengths between 0 and 1."""
         organisms = []
         for i in range(self.num_organisms):
-            strength = random.random()  # Random float between 0 and 1
+            strength = self.rng.random()  # Random float between 0 and 1
             organism = Organism(i + 1, strength)
             organisms.append(organism)
         return organisms
@@ -71,7 +86,29 @@ class OrganismSimulation:
     def filter_by_strength(self, min_strength: float, max_strength: float = 1.0) -> List[Organism]:
         """Filter organisms by strength range."""
         return [org for org in self.organisms if min_strength <= org.strength <= max_strength]
-    
+
+    def bucket_counts(self) -> List[Tuple[str, int]]:
+        """Count organisms in each of STRENGTH_BUCKETS, as (label, count) pairs."""
+        return [
+            (label, sum(1 for org in self.organisms if low < org.strength <= high))
+            for low, high, label in STRENGTH_BUCKETS
+        ]
+
+    def to_dict(self) -> dict:
+        """Return the run's settings, starting strengths, and battle history."""
+        return {
+            'seed': self.seed,
+            'num_organisms': self.num_organisms,
+            'time_iterations': self.time_iterations,
+            'initial_strengths': self.initial_strengths,
+            'battle_history': self.battle_history
+        }
+
+    def export_json(self, path: str):
+        """Write the run to a JSON file that organism_arena.html can replay."""
+        with open(path, 'w') as f:
+            json.dump(self.to_dict(), f, indent=2)
+
     def display_population(self, max_display: int = 20):
         """Display the population information."""
         print(f"\n=== Population of {self.num_organisms} Organisms ===")
@@ -111,7 +148,7 @@ class OrganismSimulation:
         # Probability of org1 winning is proportional to its strength
         prob_org1_wins = org1.strength / total_strength if total_strength > 0 else 0.5
         
-        if random.random() < prob_org1_wins:
+        if self.rng.random() < prob_org1_wins:
             winner, loser = org1, org2
         else:
             winner, loser = org2, org1
@@ -152,7 +189,7 @@ class OrganismSimulation:
                 print(f"  Iteration {iteration + 1}: Not enough alive organisms to battle. Stopping.")
                 break
             
-            org1, org2 = random.sample(alive_organisms, 2)
+            org1, org2 = self.rng.sample(alive_organisms, 2)
             winner, loser = self.battle(org1, org2)
             
             if (iteration + 1) % max(1, self.time_iterations // 10) == 0 or iteration < 5:
@@ -198,33 +235,64 @@ class OrganismSimulation:
         for i, organism in enumerate(weakest, 1):
             print(f"  {i}. {organism}")
 
-def main():
+def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+    """Parse command-line options. Counts that are left out are prompted for."""
+    parser = argparse.ArgumentParser(
+        description="Simulate organism battles and the strength hierarchy they produce."
+    )
+    parser.add_argument("-n", "--organisms", type=int,
+                        help="number of organisms (prompted for if omitted)")
+    parser.add_argument("-m", "--battles", type=int,
+                        help="number of battles to run (prompted for if omitted)")
+    parser.add_argument("--seed", type=int,
+                        help="random seed (if omitted, one is chosen at random and printed)")
+    parser.add_argument("--export", metavar="PATH",
+                        help="write the run to a JSON file that organism_arena.html can replay")
+    args = parser.parse_args(argv)
+
+    if args.organisms is not None and args.organisms <= 0:
+        parser.error("--organisms must be positive")
+    if args.battles is not None and args.battles < 0:
+        parser.error("--battles cannot be negative")
+    return args
+
+def main(argv: Optional[List[str]] = None):
     """Main function to run the simulation."""
+    args = parse_args(argv)
+
     print("Organism Strength Simulation with Battles")
     print("=" * 45)
-    
+
     # Get user input for number of organisms
-    try:
-        n = int(input("Enter the number of organisms to simulate (default 100): ") or "100")
-        if n <= 0:
-            print("Number of organisms must be positive. Using 100.")
+    n = args.organisms
+    if n is None:
+        try:
+            n = int(input("Enter the number of organisms to simulate (default 100): ") or "100")
+            if n <= 0:
+                print("Number of organisms must be positive. Using 100.")
+                n = 100
+        except ValueError:
+            print("Invalid input. Using 100 organisms.")
             n = 100
-    except ValueError:
-        print("Invalid input. Using 100 organisms.")
-        n = 100
-    
+
     # Get user input for time iterations
-    try:
-        m = int(input("Enter the number of time iterations (default 20): ") or "20")
-        if m < 0:
-            print("Time iterations cannot be negative. Using 20.")
+    m = args.battles
+    if m is None:
+        try:
+            m = int(input("Enter the number of time iterations (default 20): ") or "20")
+            if m < 0:
+                print("Time iterations cannot be negative. Using 20.")
+                m = 20
+        except ValueError:
+            print("Invalid input. Using 20 time iterations.")
             m = 20
-    except ValueError:
-        print("Invalid input. Using 20 time iterations.")
-        m = 20
-    
+
+    # Pick a random seed if none was given, and print it so the run can be repeated
+    seed = args.seed if args.seed is not None else random.randrange(1_000_000)
+    print(f"Seed: {seed} (rerun with --seed {seed})")
+
     # Create simulation
-    sim = OrganismSimulation(n, m, seed=42)  # Using seed for reproducibility
+    sim = OrganismSimulation(n, m, seed=seed)
     
     # Display initial state
     print("\n" + "=" * 45)
@@ -249,22 +317,13 @@ def main():
     print(f"\n=== Final Analysis ===")
     
     # Count organisms in different strength ranges
-    ranges = [
-        (0.0, 0.0, "Dead"),
-        (0.0, 0.2, "Very Weak"),
-        (0.2, 0.4, "Weak"),
-        (0.4, 0.6, "Average"),
-        (0.6, 0.8, "Strong"),
-        (0.8, float('inf'), "Very Strong")
-    ]
-    
-    for min_str, max_str, label in ranges:
-        if label == "Dead":
-            count = sum(1 for org in sim.organisms if org.strength == 0)
-        else:
-            count = sum(1 for org in sim.filter_by_strength(min_str, max_str) if org.strength > 0)
+    for label, count in sim.bucket_counts():
         percentage = (count / n) * 100
         print(f"  {label}: {count} organisms ({percentage:.1f}%)")
+
+    if args.export:
+        sim.export_json(args.export)
+        print(f"\nRun exported to {args.export}")
 
 if __name__ == "__main__":
     main()
