@@ -58,8 +58,10 @@ Pass the counts as options to skip the prompts. Any count you leave out is still
 python3 organism_simulation.py -n 30 -m 25 --seed 42
 
 # Save the run so the visualization can replay it
-python3 organism_simulation.py -n 30 -m 25 --seed 42 --export run.json
+python3 organism_simulation.py -n 30 -m 25 --seed 42 --export runs/run.json
 ```
+
+The export creates the folder if needed. `runs/` is in `.gitignore`, so exported runs saved there never show up as changes.
 
 The run stops early if fewer than two organisms are left alive, so `N` organisms allow at most `N - 1` battles.
 
@@ -96,7 +98,7 @@ open organism_arena.html
 
 It shows organisms in a petri dish sized by strength, a leaderboard, a battle log, and a chart of how many organisms are alive versus how much of the total strength the strongest one holds. You can set the number of organisms, battles, seed, and playback speed.
 
-Random runs in the page use its own generator, so a seed gives different draws than the same seed in Python. To watch an exact Python run, export it with `--export run.json`, then choose the file under **Python run** or drop it anywhere on the page. The page checks the file and replays every battle in order.
+Random runs in the page use its own generator, so a seed gives different draws than the same seed in Python. To watch an exact Python run, export it with `--export runs/run.json`, then choose the file under **Python run** or drop it anywhere on the page. The page checks the file and replays every battle in order.
 
 ## Project Structure
 
@@ -110,6 +112,7 @@ hierarchy/
 ├── requirements-dev.txt      # Test dependencies
 ├── pytest.ini                # Test configuration
 ├── tests/                    # pytest suite
+├── runs/                     # Exported runs (git-ignored)
 ├── .git/                     # Git repository
 └── .idea/                    # IDE configuration
 ```
