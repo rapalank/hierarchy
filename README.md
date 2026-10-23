@@ -23,7 +23,7 @@ git clone https://github.com/rapalank/hierarchy.git
 cd hierarchy
 
 # Install dependencies
-pip install numpy
+pip install -r requirements.txt
 
 # Run the simulation
 python3 organism_simulation.py
@@ -40,6 +40,34 @@ python3 organism_simulation.py
 # Example output:
 # Enter the number of organisms to simulate (default 100): 50
 # Enter the number of time iterations (default 20): 25
+```
+
+### Command-line options
+
+Pass the counts as options to skip the prompts. Any count you leave out is still prompted for.
+
+| Option | Meaning |
+|---|---|
+| `-n`, `--organisms` | Number of organisms (must be positive) |
+| `-m`, `--battles` | Number of battles to run (0 or more) |
+| `--seed` | Random seed. If omitted, one is chosen at random and printed so you can rerun the same simulation |
+| `--export PATH` | Write the run (seed, starting strengths, and every battle) to a JSON file |
+
+```bash
+# 30 organisms, 25 battles, reproducible
+python3 organism_simulation.py -n 30 -m 25 --seed 42
+
+# Save the run so the visualization can replay it
+python3 organism_simulation.py -n 30 -m 25 --seed 42 --export run.json
+```
+
+The run stops early if fewer than two organisms are left alive, so `N` organisms allow at most `N - 1` battles.
+
+### Running the tests
+
+```bash
+pip install -r requirements-dev.txt
+python3 -m pytest
 ```
 
 ### Key Components
@@ -66,22 +94,29 @@ The simulation provides comprehensive analysis including:
 open organism_arena.html
 ```
 
-It shows organisms in a petri dish sized by strength, a leaderboard, a battle log, and a chart of how many organisms are alive versus how much of the total strength the strongest one holds. You can set the number of organisms, battles, seed, and playback speed. It uses its own seeded random generator, so a seed gives different draws than the same seed in the Python script.
+It shows organisms in a petri dish sized by strength, a leaderboard, a battle log, and a chart of how many organisms are alive versus how much of the total strength the strongest one holds. You can set the number of organisms, battles, seed, and playback speed.
+
+Random runs in the page use its own generator, so a seed gives different draws than the same seed in Python. To watch an exact Python run, export it with `--export run.json`, then choose the file under **Python run** or drop it anywhere on the page. The page checks the file and replays every battle in order.
 
 ## Project Structure
 
 ```
 hierarchy/
 ├── README.md
+├── PLAN.md                   # Roadmap
 ├── organism_simulation.py    # Main simulation script
 ├── organism_arena.html       # Interactive battle visualization
+├── requirements.txt          # Runtime dependencies
+├── requirements-dev.txt      # Test dependencies
+├── pytest.ini                # Test configuration
+├── tests/                    # pytest suite
 ├── .git/                     # Git repository
 └── .idea/                    # IDE configuration
 ```
 
 ## Example Results
 
-Sample output from a simulation with 30 organisms and 25 iterations:
+Sample output from `python3 organism_simulation.py -n 30 -m 25 --seed 42`:
 
 ```
 === Final State ===
@@ -96,6 +131,8 @@ Organism #5: 4 wins, Strength = 2.500
 Organism #6: 3 wins, Strength = 2.020
 ```
 
+The final mean strength (0.424) is the same as the starting mean. Battles move strength from loser to winner without creating or destroying any, so total strength, and therefore the mean, never changes. What changes is how it's spread: here 5 organisms hold all of it.
+
 ## Mathematical Model
 
 The battle system uses probability-based competition:
@@ -104,6 +141,8 @@ The battle system uses probability-based competition:
 - Elimination: `loser.strength = 0`
 
 This creates a positive feedback loop where initial advantages compound over time, leading to natural hierarchy formation.
+
+Final strengths are grouped into buckets: Dead (0), Very Weak (0–0.2], Weak (0.2–0.4], Average (0.4–0.6], Strong (0.6–0.8], and Very Strong (above 0.8). Each bucket includes its upper bound only, so every organism is counted exactly once.
 
 ## Contributing
 

@@ -56,6 +56,10 @@ h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(28px, 
 .field input[type=number] { width: 88px; font: 500 14px var(--font-mono); padding: 6px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); color: var(--fg); }
 .field input[type=range] { width: 140px; accent-color: var(--series-1); }
 .speedval { font: 12px var(--font-mono); color: var(--fg2); }
+.field input[type=file] { font: 13px var(--font-body); color: var(--fg2); max-width: 230px; }
+.field input:disabled { opacity: 0.55; }
+.replay { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 10px 16px; border: 1px solid var(--series-1); border-radius: 8px; background: var(--surface); font-size: 14px; }
+.loaderr { margin: 0; padding: 10px 16px; border: 1px solid var(--fg2); border-radius: 8px; background: var(--surface); font-size: 14px; }
 .btns { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
 button { font: 600 14px var(--font-body); padding: 7px 14px; border-radius: 5px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
 button:hover { border-color: var(--fg2); }
@@ -131,6 +135,7 @@ footer code { font-family: var(--font-mono); }
     <div class="field"><label for="n">Organisms</label><input id="n" type="number" min="2" max="1000" value="100"></div>
     <div class="field"><label for="m">Battles</label><input id="m" type="number" min="1" max="5000" value="80"></div>
     <div class="field"><label for="seed">Seed</label><input id="seed" type="number" min="0" max="999999" value="42"></div>
+    <div class="field"><label for="runfile">Python run</label><input id="runfile" type="file" accept=".json,application/json"></div>
     <div class="field"><label for="speed">Speed</label><input id="speed" type="range" min="1" max="60" value="8"><span class="speedval" id="speedval">8 battles/s</span></div>
     <div class="btns">
       <button type="button" class="primary" id="play">Play</button>
@@ -139,6 +144,11 @@ footer code { font-family: var(--font-mono); }
       <button type="submit" id="reset">Reset</button>
     </div>
   </form>
+  <div class="replay" id="replay" hidden>
+    <span id="replay-text"></span>
+    <button type="button" id="replay-clear">Back to random runs</button>
+  </div>
+  <p class="loaderr" id="loaderr" role="alert" hidden></p>
 
   <div class="main">
     <section class="panel">
@@ -189,7 +199,7 @@ footer code { font-family: var(--font-mono); }
     </section>
   </div>
 
-  <footer>Same rules as <code>organism_simulation.py</code>: strengths start uniform in [0, 1) and each battle pairs two living organisms. The page uses its own seeded random generator, so a seed here gives different draws than the same seed in Python.</footer>
+  <footer>Same rules as <code>organism_simulation.py</code>: strengths start uniform in [0, 1) and each battle pairs two living organisms. Random runs here use the page's own generator, so a seed gives different draws than the same seed in Python. To watch an exact Python run, export it with <code>python3 organism_simulation.py --export run.json</code> and load the file above, or drop it anywhere on the page.</footer>
 </div>
 
 <script>
@@ -209,27 +219,56 @@ footer code { font-family: var(--font-mono); }
     };
   }
 
-  let sim, rng, playing = false, acc = 0, lastTs = 0;
+  let sim, rng, playing = false, acc = 0, lastTs = 0, replayRun = null;
 
-  function newSim(n, m, seed) {
+  // run: a parsed Python export (see parseRun); null for a random run
+  function newSim(n, m, seed, run) {
     rng = mulberry32(seed);
     const orgs = [];
-    for (let i = 0; i < n; i++) { const s = rng(); orgs.push({ id: i + 1, s, s0: s, wins: 0 }); }
+    for (let i = 0; i < n; i++) { const s = run ? run.strengths[i] : rng(); orgs.push({ id: i + 1, s, s0: s, wins: 0 }); }
     const total = orgs.reduce((a, o) => a + o.s, 0);
     const maxS = Math.max(...orgs.map((o) => o.s));
-    return { n, m, orgs, total, history: [], series: [{ t: 0, alive: 100, top: (maxS / total) * 100 }], done: false, last: null };
+    const alive = orgs.filter((o) => o.s > 0).length;
+    return { n, m, orgs, total, history: [], series: [{ t: 0, alive: (alive / n) * 100, top: (maxS / total) * 100 }], done: false, last: null, replay: run ? run.battles : null };
+  }
+
+  // Check an exported run by replaying it, so a bad file fails here instead of mid-animation
+  function parseRun(text) {
+    let d;
+    try { d = JSON.parse(text); } catch { throw new Error("the file isn't valid JSON."); }
+    const strengths = d && d.initial_strengths, battles = d && d.battle_history;
+    if (!Array.isArray(strengths) || strengths.length < 2 || !strengths.every((s) => typeof s === "number" && s >= 0))
+      throw new Error("initial_strengths must be a list of at least 2 non-negative numbers.");
+    if (strengths.length > 1000) throw new Error(`this page shows at most 1,000 organisms, and the run has ${strengths.length}.`);
+    if (!(strengths.reduce((a, s) => a + s, 0) > 0)) throw new Error("every organism starts with strength 0.");
+    if (!Array.isArray(battles)) throw new Error("battle_history is missing.");
+    const s = strengths.slice();
+    battles.forEach((b, i) => {
+      const w = b && b.winner_id, l = b && b.loser_id;
+      const valid = (id) => Number.isInteger(id) && id >= 1 && id <= s.length;
+      if (!valid(w) || !valid(l) || w === l) throw new Error(`battle ${i + 1} names an organism that isn't in the run.`);
+      if (!(s[w - 1] > 0 && s[l - 1] > 0)) throw new Error(`battle ${i + 1} involves an organism that was already dead.`);
+      s[w - 1] += s[l - 1]; s[l - 1] = 0;
+    });
+    return { strengths, battles, seed: d.seed, m: battles.length };
   }
 
   function step() {
     if (sim.done) return false;
     const alive = sim.orgs.filter((o) => o.s > 0);
     if (alive.length < 2 || sim.history.length >= sim.m) { sim.done = true; return false; }
-    const i = Math.floor(rng() * alive.length);
-    let j = Math.floor(rng() * (alive.length - 1)); if (j >= i) j++;
-    const a = alive[i], b = alive[j];
-    const tot = a.s + b.s;
-    const pA = tot > 0 ? a.s / tot : 0.5;
-    const [w, l] = rng() < pA ? [a, b] : [b, a];
+    let w, l;
+    if (sim.replay) {
+      const r = sim.replay[sim.history.length];
+      w = sim.orgs[r.winner_id - 1]; l = sim.orgs[r.loser_id - 1];
+    } else {
+      const i = Math.floor(rng() * alive.length);
+      let j = Math.floor(rng() * (alive.length - 1)); if (j >= i) j++;
+      const a = alive[i], b = alive[j];
+      const pA = a.s + b.s > 0 ? a.s / (a.s + b.s) : 0.5;
+      [w, l] = rng() < pA ? [a, b] : [b, a];
+    }
+    const tot = w.s + l.s;
     const rec = { t: sim.history.length + 1, w: w.id, l: l.id, ws: w.s, ls: l.s, upset: w.s < l.s };
     w.s = tot; l.s = 0; w.wins++;
     sim.history.push(rec);
@@ -461,9 +500,13 @@ footer code { font-family: var(--font-mono); }
   function clampInt(v, lo, hi, d) { v = parseInt(v, 10); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; }
   function reset(prerun) {
     playing = false;
-    const n = clampInt($("n").value, 2, 1000, 100), m = clampInt($("m").value, 1, 5000, 80), seed = clampInt($("seed").value, 0, 999999, 42);
-    $("n").value = n; $("m").value = m; $("seed").value = seed;
-    sim = newSim(n, m, seed);
+    if (replayRun) {
+      sim = newSim(replayRun.strengths.length, replayRun.m, 0, replayRun);
+    } else {
+      const n = clampInt($("n").value, 2, 1000, 100), m = clampInt($("m").value, 1, 5000, 80), seed = clampInt($("seed").value, 0, 999999, 42);
+      $("n").value = n; $("m").value = m; $("seed").value = seed;
+      sim = newSim(n, m, seed, null);
+    }
     hoverT = null;
     buildDish();
     for (let i = 0; i < prerun; i++) step();
@@ -476,6 +519,38 @@ footer code { font-family: var(--font-mono); }
   $("controls").addEventListener("submit", (e) => { e.preventDefault(); reset(0); });
   $("speed").addEventListener("input", () => { $("speedval").textContent = `${speed()} battles/s`; });
   let rz; window.addEventListener("resize", () => { cancelAnimationFrame(rz); rz = requestAnimationFrame(renderChart); });
+
+  /* ---------- Replaying a Python run ---------- */
+  function setReplayUI() {
+    const on = !!replayRun;
+    $("replay").hidden = !on;
+    ["n", "m", "seed"].forEach((id) => { $(id).disabled = on; });
+    if (on) {
+      const r = replayRun, seed = r.seed ?? "none";
+      $("replay-text").textContent = `Replaying ${r.name} from organism_simulation.py: ${r.strengths.length} organisms, ${r.m} battles, seed ${seed}.`;
+      $("n").value = r.strengths.length; $("m").value = r.m; $("seed").value = r.seed ?? "";
+    } else $("runfile").value = "";
+  }
+  function showLoadError(msg) { $("loaderr").textContent = msg; $("loaderr").hidden = false; }
+  function loadRunFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      let run;
+      try { run = parseRun(reader.result); } catch (err) { showLoadError(`Couldn't replay ${file.name}: ${err.message}`); return; }
+      run.name = file.name;
+      replayRun = run;
+      $("loaderr").hidden = true;
+      setReplayUI();
+      reset(0);
+      if (reduced) { while (step()); render(); } else play();
+    };
+    reader.onerror = () => showLoadError(`Couldn't read ${file.name}. Try choosing it again.`);
+    reader.readAsText(file);
+  }
+  $("runfile").addEventListener("change", (e) => { const f = e.target.files[0]; if (f) loadRunFile(f); });
+  $("replay-clear").addEventListener("click", () => { replayRun = null; setReplayUI(); reset(0); });
+  document.addEventListener("dragover", (e) => { if ([...e.dataTransfer.types].includes("Files")) e.preventDefault(); });
+  document.addEventListener("drop", (e) => { const f = e.dataTransfer.files[0]; if (f) { e.preventDefault(); loadRunFile(f); } });
 
   reset(reduced ? 80 : 25);
   if (!reduced) play();
