@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import random
 import numpy as np
 from typing import List, Optional, Tuple
@@ -106,6 +107,9 @@ class OrganismSimulation:
 
     def export_json(self, path: str):
         """Write the run to a JSON file that organism_arena.html can replay."""
+        folder = os.path.dirname(path)
+        if folder:
+            os.makedirs(folder, exist_ok=True)
         with open(path, 'w') as f:
             json.dump(self.to_dict(), f, indent=2)
 

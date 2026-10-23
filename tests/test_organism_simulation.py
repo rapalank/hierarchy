@@ -101,6 +101,13 @@ def test_export_json_round_trips(tmp_path):
     assert data['battle_history'] == sim.battle_history
 
 
+def test_export_json_creates_missing_folder(tmp_path):
+    sim = OrganismSimulation(4, 2, seed=1)
+    path = tmp_path / "runs" / "run.json"
+    sim.export_json(str(path))
+    assert json.loads(path.read_text())['num_organisms'] == 4
+
+
 def test_parse_args_rejects_invalid_counts():
     with pytest.raises(SystemExit):
         parse_args(["--organisms", "0"])
